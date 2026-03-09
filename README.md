@@ -278,22 +278,7 @@ Chats are **automatically saved** — close and reopen the app and your conversa
 
 ---
 
-## 🗺️ Roadmap
 
-- [x] LangGraph state machine backend
-- [x] Groq LLM with streaming
-- [x] SQLite persistent memory per thread
-- [x] Multi-thread sidebar with rename & delete
-- [x] Auto-generated chat titles
-- [x] Chat export to `.txt`
-- [x] Token usage tracking
-- [x] Context trimming (4000 token limit)
-- [ ] Tool use / function calling support
-- [ ] RAG integration — chat with your documents
-- [ ] User authentication
-- [ ] Deploy to Streamlit Cloud
-
----
 
 ## 🤝 Contributing
 
