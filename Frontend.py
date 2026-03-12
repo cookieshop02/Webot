@@ -218,10 +218,10 @@ if user_input:
                 "content": ai_response,
             })
 
-            # ✅ Track token usage
+            # Track token usage
             st.session_state["total_tokens"] += len(user_input.split()) + len(ai_response.split())
 
-            # ✅ Auto-rename on first message
+            # Auto-rename on first message
             if is_first_message:
                 current_id = st.session_state["thread_id"]
                 for thread in st.session_state["chat_threads"]:
