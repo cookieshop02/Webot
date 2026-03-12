@@ -280,6 +280,10 @@ Chats are **automatically saved** — close and reopen the app and your conversa
 
 ## Changelog
 
+
+### v3.0.0
+v3 — Migrated to PostgreSQL
+
 ### v2.0.0
 - Added FastAPI layer as backend API
 - Frontend now communicates via REST API
