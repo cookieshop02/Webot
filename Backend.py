@@ -1,17 +1,17 @@
-import os
-import logging
-from typing import TypedDict, Annotated
+import os   #Lets you read environment variables (like API keys) from the system
+import logging  #Built-in Python module for printing structured log messages (info, errors, warnings)
+from typing import TypedDict, Annotated  #TypedDict lets you define a dictionary with specific key/value types and Annotated lets you attach extra metadata to a type hint
 
-import sqlite3
+import sqlite3 #Python's built-in library to connect to and interact with SQLite databases
 
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-from langchain_core.messages import BaseMessage, SystemMessage, trim_messages
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langgraph.checkpoint.sqlite import SqliteSaver
+from dotenv import load_dotenv  #Loads variables from a .env file
+from langchain_groq import ChatGroq  #lets you call Groq-hosted LLMs
+from langchain_core.messages import BaseMessage, SystemMessage, trim_messages  #BaseMessage is the base class for all chat messages. SystemMessage is a special message that sets the AI's behavior. trim_messages cuts conversation history to fit within a token limit.
+from langgraph.graph import StateGraph, START, END  #StateGraph lets you build a graph of nodes (processing steps). START and END are special built-in entry/exit points.
+from langgraph.graph.message import add_messages  #A helper function used as a reducer — it tells LangGraph how to append new messages to the existing list rather than replacing them.
+from langgraph.checkpoint.sqlite import SqliteSaver  #A checkpointer that saves conversation state to SQLite.
 
-load_dotenv()
+load_dotenv()  #Reads your .env file and loads all key-value pairs into environment variables.
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +34,7 @@ llm = ChatGroq(
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
-# ── Nodes ─────────────────────────────────────────────────────────────────────
+# ── Nodes(these are the tasks in the workflow) ─────────────────────────────────────────────────────────────────────
 def chat_node(state: ChatState) -> ChatState:
     """Core LLM node with system prompt, context trimming, and error handling."""
     try:
