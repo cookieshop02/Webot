@@ -2,16 +2,83 @@ import uuid
 import logging
 from datetime import datetime
 
+import requests
 import streamlit as st
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_groq import ChatGroq
-import os
-
-from Backend import chatbot
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ── API Config ─────────────────────────────────────────────────────────────────
+# All requests go to FastAPI now — frontend no longer imports Backend.py
+API_BASE_URL = "http://localhost:8000"
+
+
+# ── API Helper Functions ───────────────────────────────────────────────────────
+def api_send_message(thread_id: str, message: str) -> str | None:
+    """Send a message to FastAPI and get AI response."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/chat/send",
+            json={"thread_id": thread_id, "message": message},
+            timeout=30,
+        )
+        response.raise_for_status()  # raises exception if status is 4xx or 5xx
+        return response.json()["response"]
+    except requests.exceptions.Timeout:
+        st.error("⚠️ Request timed out. Please try again.")
+        return None
+    except requests.exceptions.ConnectionError:
+        st.error("⚠️ Cannot connect to API. Is the backend running?")
+        return None
+    except Exception as e:
+        logger.error(f"API send message error: {e}")
+        st.error("⚠️ Something went wrong. Please try again.")
+        return None
+
+
+def api_get_history(thread_id: str) -> list[dict]:
+    """Load conversation history from FastAPI."""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/chat/history/{thread_id}",
+            timeout=10,
+        )
+        response.raise_for_status()
+        messages = response.json()["messages"]
+        return [{"role": m["role"], "content": m["content"]} for m in messages]
+    except Exception as e:
+        logger.error(f"API get history error: {e}")
+        st.error("⚠️ Could not load conversation history.")
+        return []
+
+
+def api_generate_title(first_message: str) -> str:
+    """Ask FastAPI to generate a chat title."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/chat/title",
+            json={"first_message": first_message},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()["title"]
+    except Exception as e:
+        logger.warning(f"API title generation error: {e}")
+        return first_message[:30]  # fallback
+
+
+def api_new_thread(thread_id: str):
+    """Notify FastAPI of a new thread creation."""
+    try:
+        requests.post(
+            f"{API_BASE_URL}/chat/new",
+            json={"thread_id": thread_id},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning(f"API new thread error: {e}")
+
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -20,35 +87,18 @@ st.set_page_config(
     layout="wide",
 )
 
+
 # ── Utility Functions ─────────────────────────────────────────────────────────
 def generate_thread_id() -> str:
     return str(uuid.uuid4())
 
-def auto_generate_title(first_message: str) -> str:
-    """Ask LLM to generate a short chat title from the first user message."""
-    try:
-        title_llm = ChatGroq(
-            api_key=os.getenv("GROQ_API_KEY"),
-            model="llama-3.1-8b-instant",
-            max_tokens=16,
-            temperature=0.3,
-        )
-        prompt = (
-            f"Generate a short 3-5 word title for a chat that starts with: '{first_message}'. "
-            "Reply with ONLY the title, no punctuation, no quotes, no explanation."
-        )
-        response = title_llm.invoke([HumanMessage(content=prompt)])
-        title = response.content.strip().strip('"').strip("'")
-        return title if title else first_message[:30]
-    except Exception as e:
-        logger.warning(f"Title generation failed: {e}")
-        return first_message[:30]
 
 def reset_chat():
     """Start a brand new conversation thread."""
     new_id = generate_thread_id()
     st.session_state["thread_id"] = new_id
     st.session_state["message_history"] = []
+    api_new_thread(new_id)  # notify API
     st.session_state["chat_threads"].insert(0, {
         "id": new_id,
         "label": "New Chat",
@@ -56,26 +106,13 @@ def reset_chat():
         "created": datetime.now().strftime("%b %d, %H:%M"),
     })
 
-def load_conversation(thread_id: str) -> list[dict]:
-    """Load persisted conversation from checkpointer."""
-    try:
-        state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
-        messages = state.values.get("messages", [])
-        result = []
-        for msg in messages:
-            role = "user" if isinstance(msg, HumanMessage) else "assistant"
-            result.append({"role": role, "content": msg.content})
-        return result
-    except Exception as e:
-        logger.error(f"Failed to load conversation {thread_id}: {e}")
-        st.error("⚠️ Could not load conversation history.")
-        return []
 
 def switch_thread(thread: dict):
     """Switch to an existing conversation thread."""
     st.session_state["thread_id"] = thread["id"]
-    st.session_state["message_history"] = load_conversation(thread["id"])
+    st.session_state["message_history"] = api_get_history(thread["id"])  # calls API now
     st.session_state["renaming_thread_id"] = None
+
 
 def rename_thread(thread_id: str, new_label: str):
     """Update the label of a thread by its ID."""
@@ -88,6 +125,7 @@ def rename_thread(thread_id: str, new_label: str):
             thread["titled"] = True
             break
 
+
 def delete_thread(thread_id: str):
     """Remove a thread from the sidebar."""
     st.session_state["chat_threads"] = [
@@ -99,9 +137,11 @@ def delete_thread(thread_id: str):
         else:
             reset_chat()
 
+
 def export_chat_as_txt(messages: list[dict]) -> str:
     lines = [f"{m['role'].upper()}: {m['content']}" for m in messages]
     return "\n\n".join(lines)
+
 
 # ── Session State Init ────────────────────────────────────────────────────────
 if "message_history" not in st.session_state:
@@ -115,6 +155,7 @@ if "renaming_thread_id" not in st.session_state:
 if "total_tokens" not in st.session_state:
     st.session_state["total_tokens"] = 0
 
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("🤖 Webot")
@@ -124,7 +165,6 @@ with st.sidebar:
         reset_chat()
         st.rerun()
 
-    # ── Export Button ─────────────────────────────────────────────────────────
     if st.session_state["message_history"]:
         export_text = export_chat_as_txt(st.session_state["message_history"])
         st.download_button(
@@ -179,12 +219,14 @@ with st.sidebar:
     st.caption(f"🔢 Tokens this session: {st.session_state['total_tokens']:,}")
     st.caption(f"🧵 Thread: `{st.session_state['thread_id'][:8]}...`")
 
+
 # ── Main Chat UI ──────────────────────────────────────────────────────────────
 st.title("💬 Chat")
 
 for message in st.session_state["message_history"]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+
 
 # ── Handle New Input ──────────────────────────────────────────────────────────
 user_input = st.chat_input("Message the chatbot...")
@@ -200,19 +242,16 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    config = {"configurable": {"thread_id": st.session_state["thread_id"]}}
-
     with st.chat_message("assistant"):
-        try:
-            ai_response = st.write_stream(
-                chunk.content
-                for chunk, metadata in chatbot.stream(
-                    {"messages": [HumanMessage(content=user_input)]},
-                    config=config,
-                    stream_mode="messages",
-                )
-                if isinstance(chunk, AIMessage) and chunk.content
+        with st.spinner("Thinking..."):
+            # Calls FastAPI instead of LangGraph directly
+            ai_response = api_send_message(
+                thread_id=st.session_state["thread_id"],
+                message=user_input,
             )
+
+        if ai_response:
+            st.markdown(ai_response)
             st.session_state["message_history"].append({
                 "role": "assistant",
                 "content": ai_response,
@@ -226,11 +265,7 @@ if user_input:
                 current_id = st.session_state["thread_id"]
                 for thread in st.session_state["chat_threads"]:
                     if thread["id"] == current_id and not thread["titled"]:
-                        thread["label"] = auto_generate_title(user_input)
+                        thread["label"] = api_generate_title(user_input)  # calls API now
                         thread["titled"] = True
                         break
                 st.rerun()
-
-        except Exception as e:
-            logger.error(f"Streaming error: {e}")
-            st.error("⚠️ Something went wrong. Please try again.")

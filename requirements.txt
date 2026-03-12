@@ -5,3 +5,6 @@ langchain-core
 python-dotenv
 langgraph-checkpoint-sqlite
 transformers
+fastapi
+uvicorn
+requests
