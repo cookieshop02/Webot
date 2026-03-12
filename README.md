@@ -278,7 +278,16 @@ Chats are **automatically saved** — close and reopen the app and your conversa
 
 ---
 
+## Changelog
 
+### v2.0.0
+- Added FastAPI layer as backend API
+- Frontend now communicates via REST API
+- Separated concerns — frontend, routes, schemas
+
+### v1.0.0
+- Initial release
+- Streamlit frontend directly connected to LangGraph
 
 ## 🤝 Contributing
 
