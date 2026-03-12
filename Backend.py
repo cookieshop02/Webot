@@ -44,7 +44,7 @@ def chat_node(state: ChatState) -> ChatState:
             If you don't know something, say so clearly.
         """)
 
-        # ✅ Trim to last 4000 tokens to prevent cost blowup on long chats
+        # Trim to last 4000 tokens to prevent cost blowup on long chats
         trimmed = trim_messages(
             state["messages"],
             max_tokens=4000,
@@ -77,7 +77,7 @@ graph.add_node("chat_node", chat_node)
 graph.add_edge(START, "chat_node")
 graph.add_edge("chat_node", END)
 
-# ✅ Compiled ONCE at startup — never per request
+# Compiled ONCE at startup — never per request
 chatbot = graph.compile(checkpointer=checkpointer)
 
 logger.info("✅ Chatbot graph compiled and ready.")
