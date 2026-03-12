@@ -2,14 +2,14 @@ import os   #Lets you read environment variables (like API keys) from the system
 import logging  #Built-in Python module for printing structured log messages (info, errors, warnings)
 from typing import TypedDict, Annotated  #TypedDict lets you define a dictionary with specific key/value types and Annotated lets you attach extra metadata to a type hint
 
-import sqlite3 #Python's built-in library to connect to and interact with SQLite databases
+import psycopg  #Python library to connect to and interact with PostgreSQL databases
 
 from dotenv import load_dotenv  #Loads variables from a .env file
 from langchain_groq import ChatGroq  #lets you call Groq-hosted LLMs
 from langchain_core.messages import BaseMessage, SystemMessage, trim_messages  #BaseMessage is the base class for all chat messages. SystemMessage is a special message that sets the AI's behavior. trim_messages cuts conversation history to fit within a token limit.
 from langgraph.graph import StateGraph, START, END  #StateGraph lets you build a graph of nodes (processing steps). START and END are special built-in entry/exit points.
 from langgraph.graph.message import add_messages  #A helper function used as a reducer — it tells LangGraph how to append new messages to the existing list rather than replacing them.
-from langgraph.checkpoint.sqlite import SqliteSaver  #A checkpointer that saves conversation state to SQLite.
+from langgraph.checkpoint.postgres import PostgresSaver  #A checkpointer that saves conversation state to PostgreSQL.
 
 load_dotenv()  #Reads your .env file and loads all key-value pairs into environment variables.
 
@@ -68,9 +68,10 @@ def chat_node(state: ChatState) -> ChatState:
         raise
 
 # ── Checkpointer & Graph ──────────────────────────────────────────────────────
-DB_PATH = os.getenv("DB_PATH", "./chatbot.db")
-conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-checkpointer = SqliteSaver(conn)
+DB_PATH = os.getenv("DATABASE_URL", "./postgres.db")
+conn = psycopg.connect(DB_PATH, autocommit=True)
+checkpointer = PostgresSaver(conn)
+checkpointer.setup()  
 
 graph = StateGraph(ChatState)
 graph.add_node("chat_node", chat_node)

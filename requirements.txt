@@ -8,3 +8,5 @@ transformers
 fastapi
 uvicorn
 requests
+langgraph-checkpoint-postgres
+psycopg-binary 
