@@ -9,4 +9,8 @@ fastapi
 uvicorn
 requests
 langgraph-checkpoint-postgres
-psycopg-binary 
+psycopg[binary] 
+passlib[bcrypt] 
+python-jose[cryptography] 
+python-multipart
+pydantic[email]

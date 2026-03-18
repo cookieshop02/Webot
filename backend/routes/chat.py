@@ -3,8 +3,10 @@ import os
 from fastapi import APIRouter, HTTPException
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_groq import ChatGroq
+from backend.auth.dependencies import get_current_user
+from fastapi import APIRouter, HTTPException, Depends
 
-from schemas.chat import (
+from backend.schemas.chat import (
     SendMessageRequest,
     SendMessageResponse,
     NewThreadRequest,
@@ -33,19 +35,19 @@ router = APIRouter(
 
 # ── POST /chat/new ─────────────────────────────────────────────────────────────
 @router.post("/new", response_model=NewThreadResponse)
-def create_new_thread(request: NewThreadRequest):
+def create_new_thread(request: NewThreadRequest,current_user: dict = Depends(get_current_user)):
     """
     Called when user clicks 'New Chat'.
     Just acknowledges the new thread ID — no DB write needed,
     LangGraph creates the thread automatically on first message.
     """
     logger.info(f"New thread created: {request.thread_id}")
-    return NewThreadResponse(thread_id=request.thread_id)
+    return NewThreadResponse(thread_id=request.thread_id,)
 
 
 # ── POST /chat/send ────────────────────────────────────────────────────────────
 @router.post("/send", response_model=SendMessageResponse)
-def send_message(request: SendMessageRequest):
+def send_message(request: SendMessageRequest,current_user: dict = Depends(get_current_user)):
     """
     Core endpoint — receives user message, runs LangGraph, returns AI response.
     """
@@ -84,7 +86,7 @@ def send_message(request: SendMessageRequest):
 
 # ── GET /chat/history/{thread_id} ──────────────────────────────────────────────
 @router.get("/history/{thread_id}", response_model=HistoryResponse)
-def get_history(thread_id: str):
+def get_history(thread_id: str,current_user: dict = Depends(get_current_user)):
     """
     Called when user switches to an existing conversation.
     Loads persisted messages from SQLite via LangGraph checkpointer.
@@ -111,7 +113,7 @@ def get_history(thread_id: str):
 
 # ── POST /chat/title ───────────────────────────────────────────────────────────
 @router.post("/title", response_model=GenerateTitleResponse)
-def generate_title(request: GenerateTitleRequest):
+def generate_title(request: GenerateTitleRequest,current_user: dict = Depends(get_current_user)):
     """
     Called after the first message to auto-generate a chat title.
     Uses a lightweight LLM call — same logic you had in frontend.py before.

@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routes.chat import router as chat_router
+from backend.routes.auth import router as auth_router
+from backend.routes.chat import router as chat_router
 
 # ── Load Environment ───────────────────────────────────────────────────────────
 load_dotenv()
@@ -61,6 +62,7 @@ app.add_middleware(
 
 # ── Register Routers ───────────────────────────────────────────────────────────
 # This connects your routes/chat.py endpoints to the main app
+app.include_router(auth_router)
 app.include_router(chat_router)
 
 

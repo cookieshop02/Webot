@@ -10,26 +10,69 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ── API Config ─────────────────────────────────────────────────────────────────
-# All requests go to FastAPI now — frontend no longer imports Backend.py
-API_BASE_URL = "http://localhost:8000"
+import os
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 
 # ── API Helper Functions ───────────────────────────────────────────────────────
-def api_send_message(thread_id: str, message: str) -> str | None:
+def api_register(email: str, password: str) -> dict | None:
+    """Register a new user."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/register",
+            json={"email": email, "password": password},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        error_detail = e.response.json().get("detail", "Registration failed.")
+        st.error(f"⚠️ {error_detail}")
+        return None
+    except Exception as e:
+        logger.error(f"Register error: {e}")
+        st.error("⚠️ Cannot connect to API. Is the backend running?")
+        return None
+
+
+def api_login(email: str, password: str) -> str | None:
+    """Login and return JWT token."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/login",
+            json={"email": email, "password": password},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()["access_token"]
+    except requests.exceptions.HTTPError as e:
+        error_detail = e.response.json().get("detail", "Login failed.")
+        st.error(f"⚠️ {error_detail}")
+        return None
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        st.error("⚠️ Cannot connect to API. Is the backend running?")
+        return None
+
+
+def api_send_message(thread_id: str, message: str, token: str) -> str | None:
     """Send a message to FastAPI and get AI response."""
     try:
         response = requests.post(
             f"{API_BASE_URL}/chat/send",
             json={"thread_id": thread_id, "message": message},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
-        response.raise_for_status()  # raises exception if status is 4xx or 5xx
+        response.raise_for_status()
         return response.json()["response"]
     except requests.exceptions.Timeout:
         st.error("⚠️ Request timed out. Please try again.")
         return None
-    except requests.exceptions.ConnectionError:
-        st.error("⚠️ Cannot connect to API. Is the backend running?")
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            st.error("⚠️ Session expired. Please login again.")
+            logout()
         return None
     except Exception as e:
         logger.error(f"API send message error: {e}")
@@ -37,11 +80,12 @@ def api_send_message(thread_id: str, message: str) -> str | None:
         return None
 
 
-def api_get_history(thread_id: str) -> list[dict]:
+def api_get_history(thread_id: str, token: str) -> list[dict]:
     """Load conversation history from FastAPI."""
     try:
         response = requests.get(
             f"{API_BASE_URL}/chat/history/{thread_id}",
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
         response.raise_for_status()
@@ -49,35 +93,44 @@ def api_get_history(thread_id: str) -> list[dict]:
         return [{"role": m["role"], "content": m["content"]} for m in messages]
     except Exception as e:
         logger.error(f"API get history error: {e}")
-        st.error("⚠️ Could not load conversation history.")
         return []
 
 
-def api_generate_title(first_message: str) -> str:
+def api_generate_title(first_message: str, token: str) -> str:
     """Ask FastAPI to generate a chat title."""
     try:
         response = requests.post(
             f"{API_BASE_URL}/chat/title",
             json={"first_message": first_message},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
         response.raise_for_status()
         return response.json()["title"]
     except Exception as e:
         logger.warning(f"API title generation error: {e}")
-        return first_message[:30]  # fallback
+        return first_message[:30]
 
 
-def api_new_thread(thread_id: str):
+def api_new_thread(thread_id: str, token: str):
     """Notify FastAPI of a new thread creation."""
     try:
         requests.post(
             f"{API_BASE_URL}/chat/new",
             json={"thread_id": thread_id},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
     except Exception as e:
         logger.warning(f"API new thread error: {e}")
+
+
+# ── Auth Functions ─────────────────────────────────────────────────────────────
+def logout():
+    """Clear session and go back to login screen."""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 
 # ── Page Config ───────────────────────────────────────────────────────────────
@@ -88,17 +141,87 @@ st.set_page_config(
 )
 
 
+# ── Auth UI ───────────────────────────────────────────────────────────────────
+def show_auth_page():
+    """Show login/register page when user is not logged in."""
+    st.title("🤖 Webot")
+    st.subheader("Your AI Assistant")
+    st.divider()
+
+    tab1, tab2 = st.tabs(["Login", "Register"])
+
+    with tab1:
+        st.subheader("Welcome back!")
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Password", type="password", key="login_password")
+
+        if st.button("Login", use_container_width=True, type="primary"):
+            if not email or not password:
+                st.error("⚠️ Please enter email and password.")
+            else:
+                token = api_login(email, password)
+                if token:
+                    st.session_state["token"] = token
+                    st.session_state["email"] = email
+                    st.success("✅ Logged in successfully!")
+                    st.rerun()
+
+    with tab2:
+        st.subheader("Create an account")
+        email = st.text_input("Email", key="register_email")
+        password = st.text_input("Password (min 6 characters)", type="password", key="register_password")
+
+        if st.button("Register", use_container_width=True, type="primary"):
+            if not email or not password:
+                st.error("⚠️ Please enter email and password.")
+            elif len(password) < 6:
+                st.error("⚠️ Password must be at least 6 characters.")
+            else:
+                result = api_register(email, password)
+                if result:
+                    st.success("✅ Account created! Please login.")
+
+
+# ── Main App ──────────────────────────────────────────────────────────────────
+
+# If not logged in → show auth page
+if "token" not in st.session_state:
+    show_auth_page()
+    st.stop()
+
+# ── Session State Init ────────────────────────────────────────────────────────
+if "message_history" not in st.session_state:
+    st.session_state["message_history"] = []
+if "chat_threads" not in st.session_state:
+    st.session_state["chat_threads"] = []
+if "thread_id" not in st.session_state:
+    token = st.session_state["token"]
+    new_id = str(uuid.uuid4())
+    st.session_state["thread_id"] = new_id
+    st.session_state["chat_threads"].insert(0, {
+        "id": new_id,
+        "label": "New Chat",
+        "titled": False,
+        "created": datetime.now().strftime("%b %d, %H:%M"),
+    })
+    api_new_thread(new_id, token)
+if "renaming_thread_id" not in st.session_state:
+    st.session_state["renaming_thread_id"] = None
+if "total_tokens" not in st.session_state:
+    st.session_state["total_tokens"] = 0
+
+
 # ── Utility Functions ─────────────────────────────────────────────────────────
 def generate_thread_id() -> str:
     return str(uuid.uuid4())
 
 
 def reset_chat():
-    """Start a brand new conversation thread."""
     new_id = generate_thread_id()
+    token = st.session_state["token"]
     st.session_state["thread_id"] = new_id
     st.session_state["message_history"] = []
-    api_new_thread(new_id)  # notify API
+    api_new_thread(new_id, token)
     st.session_state["chat_threads"].insert(0, {
         "id": new_id,
         "label": "New Chat",
@@ -108,14 +231,13 @@ def reset_chat():
 
 
 def switch_thread(thread: dict):
-    """Switch to an existing conversation thread."""
+    token = st.session_state["token"]
     st.session_state["thread_id"] = thread["id"]
-    st.session_state["message_history"] = api_get_history(thread["id"])  # calls API now
+    st.session_state["message_history"] = api_get_history(thread["id"], token)
     st.session_state["renaming_thread_id"] = None
 
 
 def rename_thread(thread_id: str, new_label: str):
-    """Update the label of a thread by its ID."""
     new_label = new_label.strip()
     if not new_label:
         return
@@ -127,7 +249,6 @@ def rename_thread(thread_id: str, new_label: str):
 
 
 def delete_thread(thread_id: str):
-    """Remove a thread from the sidebar."""
     st.session_state["chat_threads"] = [
         t for t in st.session_state["chat_threads"] if t["id"] != thread_id
     ]
@@ -143,27 +264,18 @@ def export_chat_as_txt(messages: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-# ── Session State Init ────────────────────────────────────────────────────────
-if "message_history" not in st.session_state:
-    st.session_state["message_history"] = []
-if "chat_threads" not in st.session_state:
-    st.session_state["chat_threads"] = []
-if "thread_id" not in st.session_state:
-    reset_chat()
-if "renaming_thread_id" not in st.session_state:
-    st.session_state["renaming_thread_id"] = None
-if "total_tokens" not in st.session_state:
-    st.session_state["total_tokens"] = 0
-
-
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("🤖 Webot")
+    st.caption(f"Logged in as: {st.session_state.get('email', '')}")
     st.divider()
 
     if st.button("➕ New Chat", use_container_width=True, type="primary"):
         reset_chat()
         st.rerun()
+
+    if st.button("🚪 Logout", use_container_width=True):
+        logout()
 
     if st.session_state["message_history"]:
         export_text = export_chat_as_txt(st.session_state["message_history"])
@@ -236,6 +348,7 @@ if user_input:
     if not user_input:
         st.stop()
 
+    token = st.session_state["token"]
     is_first_message = len(st.session_state["message_history"]) == 0
 
     st.session_state["message_history"].append({"role": "user", "content": user_input})
@@ -244,10 +357,10 @@ if user_input:
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            # Calls FastAPI instead of LangGraph directly
             ai_response = api_send_message(
                 thread_id=st.session_state["thread_id"],
                 message=user_input,
+                token=token,
             )
 
         if ai_response:
@@ -257,15 +370,13 @@ if user_input:
                 "content": ai_response,
             })
 
-            # Track token usage
             st.session_state["total_tokens"] += len(user_input.split()) + len(ai_response.split())
 
-            # Auto-rename on first message
             if is_first_message:
                 current_id = st.session_state["thread_id"]
                 for thread in st.session_state["chat_threads"]:
                     if thread["id"] == current_id and not thread["titled"]:
-                        thread["label"] = api_generate_title(user_input)  # calls API now
+                        thread["label"] = api_generate_title(user_input, token)
                         thread["titled"] = True
                         break
                 st.rerun()

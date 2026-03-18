@@ -1,0 +1,21 @@
+# ── Base Image ─────────────────────────────────────────────────────────────────
+FROM python:3.10-slim
+
+# ── Working Directory ──────────────────────────────────────────────────────────
+WORKDIR /app
+
+# ── Copy Requirements ──────────────────────────────────────────────────────────
+COPY requirements.txt .
+
+# ── Install Dependencies ───────────────────────────────────────────────────────
+RUN pip install --no-cache-dir --timeout=120 --retries=5 -r requirements.txt
+
+# ── Copy Code ──────────────────────────────────────────────────────────────────
+COPY . .
+
+# ── Expose Port ────────────────────────────────────────────────────────────────
+# Streamlit default port
+EXPOSE 8501
+
+# ── Start Command ──────────────────────────────────────────────────────────────
+CMD ["streamlit", "run", "Frontend.py", "--server.port=8501", "--server.address=0.0.0.0"]
