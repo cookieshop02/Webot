@@ -280,6 +280,10 @@ Chats are **automatically saved** — close and reopen the app and your conversa
 
 ## Changelog
 
+### v4.0.0
+- Added JWT authentication (register, login, protected routes)
+- Added Docker support — run entire app with one command
+- Migrated checkpointer to PostgreSQL
 
 ### v3.0.0
 v3 — Migrated to PostgreSQL
