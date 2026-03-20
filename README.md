@@ -12,6 +12,13 @@
 
 ---
 
+🎉🎉🎉 APP IS LIVE ON THE INTERNET!
+
+URLs:
+
+- Frontend → https://webot-frontend.onrender.com/
+- Backend docs → https://webot-u9b2.onrender.com/docs
+
 ## 📌 Table of Contents
 
 - [About the Project](#-about-the-project)
